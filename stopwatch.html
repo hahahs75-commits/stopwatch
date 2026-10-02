@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>펭귄 스톱워치</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --text: #1d1f23;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --start: #16a34a;
+    --stop: #dc2626;
+    --neutral: #4b5563;
+    --stage-bg: #e8f3fb;
+    --effect: #1e6fd9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111316;
+      --card: #1b1e23;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --line: #2d3138;
+      --neutral: #6b7280;
+      --stage-bg: #1a2735;
+      --effect: #5aa2ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  }
+  .card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--card);
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.08);
+  }
+  .stage {
+    position: relative;
+    background: var(--stage-bg);
+    border-radius: 16px;
+    height: 230px;
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
+  .stage svg, .stage video {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .stage video { object-fit: contain; display: none; }
+  .mood {
+    position: absolute;
+    left: 12px;
+    top: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--card);
+    color: var(--text);
+    z-index: 1;
+  }
+  .effect-meter {
+    position: absolute;
+    right: 12px;
+    top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--effect);
+    font-variant-numeric: tabular-nums;
+    z-index: 1;
+  }
+  .effect-bar {
+    width: 72px;
+    height: 8px;
+    border-radius: 4px;
+    background: rgba(0,0,0,.12);
+    overflow: hidden;
+  }
+  .effect-bar div { height: 100%; width: 0; background: var(--effect); }
+  .display {
+    text-align: center;
+    font-size: clamp(44px, 14vw, 64px);
+    font-variant-numeric: tabular-nums;
+    font-weight: 300;
+    letter-spacing: 1px;
+  }
+  .display .ms { font-size: .55em; color: var(--muted); }
+  .buttons {
+    display: flex;
+    gap: 12px;
+    margin: 20px 0 16px;
+  }
+  button {
+    flex: 1;
+    padding: 14px 0;
+    border: none;
+    border-radius: 12px;
+    font-size: 17px;
+    font-weight: 600;
+    color: #fff;
+    cursor: pointer;
+    transition: opacity .15s, transform .05s;
+  }
+  button:active { transform: scale(.97); }
+  button:disabled { opacity: .4; cursor: default; }
+  #startBtn { background: var(--start); }
+  #startBtn.running { background: var(--stop); }
+  #lapBtn { background: var(--neutral); }
+  .hint { text-align: center; font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+  ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  li {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 4px;
+    border-top: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+  }
+  li .lap-no { color: var(--muted); }
+  li.best { color: var(--start); }
+  li.worst { color: var(--stop); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="stage">
+      <span class="mood" id="mood">기운 없음</span>
+      <div class="effect-meter">
+        <span id="effectPct">약효 0%</span>
+        <div class="effect-bar"><div id="effectBar"></div></div>
+      </div>
+
+      <!-- 펭귄 영상 파일을 쓸 때 표시됨 (아래 PENGUIN_VIDEOS 설정 참고) -->
+      <video id="penguinVideo" muted loop playsinline></video>
+
+      <!-- 기본: 코드로 그린 펭귄 애니메이션 -->
+      <svg id="penguinSvg" viewBox="0 0 300 230" aria-label="펭귄">
+        <defs>
+          <clipPath id="eyeL"><circle cx="134" cy="98" r="10"/></clipPath>
+          <clipPath id="eyeR"><circle cx="166" cy="98" r="10"/></clipPath>
+          <radialGradient id="glowGrad">
+            <stop offset="0" stop-color="#7cc4ff" stop-opacity=".9"/>
+            <stop offset="1" stop-color="#7cc4ff" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+
+        <!-- 약효 후광 + 퍼지는 파동 -->
+        <circle id="glow" cx="150" cy="140" r="95" fill="url(#glowGrad)" opacity="0"/>
+        <g id="rings" fill="none" stroke="#3b8bff" stroke-width="3">
+          <circle cx="150" cy="140" r="0"/>
+          <circle cx="150" cy="140" r="0"/>
+          <circle cx="150" cy="140" r="0"/>
+        </g>
+
+        <ellipse id="shadow" cx="150" cy="216" rx="48" ry="7" fill="rgba(0,0,0,.15)"/>
+        <g id="penguin">
+          <!-- 발 -->
+          <ellipse cx="130" cy="210" rx="15" ry="6" fill="#f59e0b"/>
+          <ellipse cx="170" cy="210" rx="15" ry="6" fill="#f59e0b"/>
+          <!-- 날개 -->
+          <ellipse id="flipL" cx="94" cy="145" rx="11" ry="34" fill="#1e6fd9"/>
+          <ellipse id="flipR" cx="206" cy="145" rx="11" ry="34" fill="#1e6fd9"/>
+          <!-- 몸 -->
+          <ellipse cx="150" cy="138" rx="58" ry="74" fill="#1e6fd9"/>
+          <ellipse cx="150" cy="152" rx="40" ry="56" fill="#ffffff"/>
+          <!-- 볼 -->
+          <g id="cheeks">
+            <circle cx="120" cy="118" r="7" fill="#fda4af"/>
+            <circle cx="180" cy="118" r="7" fill="#fda4af"/>
+          </g>
+          <!-- 눈 -->
+          <circle cx="134" cy="98" r="10" fill="#fff"/>
+          <circle cx="166" cy="98" r="10" fill="#fff"/>
+          <circle id="pupilL" cx="135" cy="99" r="5" fill="#111"/>
+          <circle id="pupilR" cx="165" cy="99" r="5" fill="#111"/>
+          <rect id="lidL" x="122" y="88" width="24" height="0" fill="#1e6fd9" clip-path="url(#eyeL)"/>
+          <rect id="lidR" x="154" y="88" width="24" height="0" fill="#1e6fd9" clip-path="url(#eyeR)"/>
+          <!-- 입 -->
+          <ellipse id="mouth" cx="150" cy="124" rx="7" ry="0" fill="#7a1f2b"/>
+          <!-- 부리 -->
+          <polygon points="139,110 161,110 150,121" fill="#f59e0b"/>
+          <!-- 식은땀 (기운 없을 때) -->
+          <g id="sweat" opacity="0">
+            <path id="drop1" d="M196 76 q7 11 0 15 q-7 -4 0 -15z" fill="#7cc4ff"/>
+            <path id="drop2" d="M104 84 q5 8 0 11 q-5 -3 0 -11z" fill="#7cc4ff"/>
+          </g>
+        </g>
+
+        <!-- 알약 -->
+        <g id="pill">
+          <g transform="rotate(-30)">
+            <rect x="-14" y="-6" width="14" height="12" rx="6" fill="#1e6fd9"/>
+            <rect x="0" y="-6" width="14" height="12" rx="6" fill="#ffffff" stroke="#1e6fd9" stroke-width="1.5"/>
+            <rect x="-6" y="-6" width="12" height="12" fill="#1e6fd9"/>
+            <rect x="0" y="-5.2" width="6" height="10.4" fill="#ffffff"/>
+          </g>
+        </g>
+
+        <!-- 반짝이 -->
+        <g id="sparkles" fill="#f5b700" font-size="18" text-anchor="middle">
+          <text x="70" y="80">✦</text>
+          <text x="232" y="96">✦</text>
+          <text x="58" y="170">✦</text>
+          <text x="244" y="176">✦</text>
+          <text x="214" y="48">✦</text>
+        </g>
+
+        <text id="sigh" x="216" y="74" font-size="15" font-weight="700" fill="#64748b" opacity="0">휴…</text>
+        <text id="burst" x="150" y="44" font-size="22" font-weight="800" fill="#1e6fd9"
+              text-anchor="middle" stroke="#fff" stroke-width="4" paint-order="stroke" opacity="0">약효 발현!</text>
+      </svg>
+    </div>
+
+    <div class="display" id="display">00:00<span class="ms">.00</span></div>
+    <div class="buttons">
+      <button id="lapBtn" disabled>랩</button>
+      <button id="startBtn">시작</button>
+    </div>
+    <div class="hint">Space: 시작/정지 · L: 랩 · R: 리셋</div>
+    <ol id="laps"></ol>
+  </div>
+
+<script>
+  // ── 펭귄 영상 설정 ───────────────────────────────────────────
+  // 직접 가진 펭귄 영상 파일이 있다면 이 html과 같은 폴더에 두고 아래에 적어주세요.
+  // from: 이 시간(초)부터 해당 영상 재생. 비워두면 코드로 그린 펭귄이 나옵니다.
+  // 예) [{ from: 0, src: 'tired.mp4' }, { from: 5, src: 'effect.mp4' }, { from: 20, src: 'energetic.mp4' }]
+  const PENGUIN_VIDEOS = [];
+
+  // 시작 후 약효가 거의(95%) 다 나타나기까지 걸리는 시간(초)
+  const EFFECT_SECONDS = 20;
+  // ─────────────────────────────────────────────────────────
+
+  const display = document.getElementById('display');
+  const startBtn = document.getElementById('startBtn');
+  const lapBtn = document.getElementById('lapBtn');
+  const lapsEl = document.getElementById('laps');
+  const $ = id => document.getElementById(id);
+
+  let running = false;
+  let startTime = 0;
+  let elapsed = 0;
+  let lapStart = 0;
+  let laps = [];
+
+  function now() { return performance.now(); }
+  function total() { return running ? elapsed + (now() - startTime) : elapsed; }
+
+  function format(ms) {
+    const cs = Math.floor(ms / 10) % 100;
+    const s = Math.floor(ms / 1000) % 60;
+    const m = Math.floor(ms / 60000) % 60;
+    const h = Math.floor(ms / 3600000);
+    const pad = n => String(n).padStart(2, '0');
+    const main = (h > 0 ? h + ':' : '') + pad(m) + ':' + pad(s);
+    return { main, cs: pad(cs) };
+  }
+
+  function render() {
+    const t = format(total());
+    display.innerHTML = `${t.main}<span class="ms">.${t.cs}</span>`;
+  }
+
+  // ── 펭귄 애니메이션 ──
+  const useVideo = PENGUIN_VIDEOS.length > 0;
+  const video = $('penguinVideo');
+  if (useVideo) {
+    $('penguinSvg').style.display = 'none';
+    video.style.display = 'block';
+  }
+
+  const PILL_MS = 1000;                       // 알약을 삼키는 시간
+  const TAU = EFFECT_SECONDS * 1000 / 3;      // 약효 곡선 시간상수
+  const ONSET_MS = PILL_MS + TAU * Math.LN2;  // 약효 50% 시점 → "약효 발현!" 표시
+
+  let phase = 0, lastFrame = now(), nextBlink = now() + 2500;
+  const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+  const lerp = (a, b, k) => a + (b - a) * k;
+
+  // 약효 0 → 1 (알약을 삼킨 뒤 빠르게 상승)
+  function effectAt(ms) {
+    if (ms <= PILL_MS) return 0;
+    return 1 - Math.exp(-(ms - PILL_MS) / TAU);
+  }
+
+  function moodText(ms, e) {
+    if (ms === 0) return '기운 없음… 시작을 눌러 약을 주세요';
+    if (ms < PILL_MS) return '꿀꺽! 💊';
+    if (e < 0.5) return '약효 발현 중…';
+    if (e < 0.95) return '빠르게 회복 중!';
+    return '약효 완전 발현 💪';
+  }
+
+  function updateVideo(sec) {
+    let src = PENGUIN_VIDEOS[0].src;
+    for (const v of PENGUIN_VIDEOS) if (sec >= v.from) src = v.src;
+    if (video.getAttribute('src') !== src) {
+      video.setAttribute('src', src);
+      video.play().catch(() => {});
+    }
+    running ? video.play().catch(() => {}) : video.pause();
+  }
+
+  function drawPenguin(t, ms, e, dt) {
+    const f = 1 - e; // 지친 정도
+
+    // 기운 없을 땐 느리고 낮게, 약효가 돌수록 힘차게 점프
+    const freq = running ? lerp(0.5, 2.6, e) : 0.4;
+    const amp = running ? lerp(1, 20, e) : 1.5;
+    phase += dt / 1000 * freq * Math.PI * 2;
+
+    const hop = Math.abs(Math.sin(phase)) * amp;
+    const slump = f * 10;
+    const tilt = f * 6 + (f > 0.6 ? Math.sin(phase * 0.5) * (f - 0.6) * 10 : 0);
+    const squash = 1 - 0.1 * f + (running ? 0 : Math.sin(phase) * 0.01);
+
+    $('penguin').setAttribute('transform',
+      `translate(0 ${slump - hop}) rotate(${tilt} 150 215) translate(150 215) scale(${1 + 0.05 * f} ${squash}) translate(-150 -215)`);
+    $('shadow').setAttribute('rx', 48 - hop * 0.8);
+
+    // 날개: 기운 없으면 축 처짐, 약효가 돌면 신나게 파닥
+    const flap = running ? Math.sin(phase * 2) * 30 * e : 0;
+    const droop = 8 + f * 14 - e * 10;
+    $('flipL').setAttribute('transform', `rotate(${droop + flap} 100 118)`);
+    $('flipR').setAttribute('transform', `rotate(${-droop - flap} 200 118)`);
+
+    // 눈꺼풀 + 깜빡임
+    let lid = lerp(0.6, 0.02, clamp(e * 1.3));
+    if (t > nextBlink) {
+      lid = 1;
+      if (t > nextBlink + 130) nextBlink = t + 2000 + Math.random() * 3000;
+    }
+    $('lidL').setAttribute('height', 20 * lid);
+    $('lidR').setAttribute('height', 20 * lid);
+    $('pupilL').setAttribute('cy', 99 + f * 3);
+    $('pupilR').setAttribute('cy', 99 + f * 3);
+
+    // 기운 없을 땐 식은땀·한숨, 회복되면 볼이 발그레
+    $('cheeks').setAttribute('opacity', clamp(e * 1.4 - 0.2));
+    $('sweat').setAttribute('opacity', clamp((f - 0.4) * 2.5));
+    const drip = (t / 1000 * 0.8) % 1;
+    $('drop1').setAttribute('transform', `translate(0 ${drip * 30})`);
+    $('drop2').setAttribute('transform', `translate(0 ${((drip + 0.5) % 1) * 24})`);
+    $('sigh').setAttribute('opacity', ms === 0 ? 0.5 + Math.sin(t / 600) * 0.4 : 0);
+
+    // 알약: 대기 중엔 옆에서 둥실, 시작하면 부리로 날아가 꿀꺽
+    const pill = $('pill');
+    if (ms === 0) {
+      pill.setAttribute('opacity', 1);
+      pill.setAttribute('transform', `translate(238 ${150 + Math.sin(t / 400) * 6})`);
+      $('mouth').setAttribute('ry', 0);
+    } else if (ms < PILL_MS) {
+      const k = ms / PILL_MS;
+      const x = lerp(238, 150, k);
+      const y = lerp(150, 116, k) - Math.sin(k * Math.PI) * 50 + slump - hop;
+      pill.setAttribute('opacity', 1);
+      pill.setAttribute('transform', `translate(${x} ${y}) scale(${1 - k * 0.6}) rotate(${k * 360})`);
+      $('mouth').setAttribute('ry', 6 * Math.sin(k * Math.PI));
+    } else {
+      pill.setAttribute('opacity', 0);
+      $('mouth').setAttribute('ry', e > 0.95 && running ? 3 + Math.sin(phase * 2) * 1.5 : 0);
+    }
+
+    // 약효 파동: 약효가 오르는 동안 강하게 퍼짐
+    const surge = 4 * e * (1 - e);
+    const ringStrength = ms > PILL_MS ? clamp(surge + e * 0.25) : 0;
+    [...$('rings').children].forEach((c, i) => {
+      const p = ((t / 1000) * 0.9 + i / 3) % 1;
+      c.setAttribute('r', 30 + p * 90);
+      c.setAttribute('opacity', (1 - p) * ringStrength);
+    });
+    $('glow').setAttribute('opacity', e * (0.7 + Math.sin(t / 300) * 0.15));
+
+    // 반짝이
+    [...$('sparkles').children].forEach((s, i) => {
+      s.setAttribute('opacity', clamp(e * 1.4 - 0.4) * (0.5 + 0.5 * Math.sin(t / 250 + i * 1.7)));
+    });
+
+    // "약효 발현!" 팝업
+    const since = ms - ONSET_MS;
+    const burst = $('burst');
+    if (since > 0 && since < 2500) {
+      const pop = since < 250 ? since / 250 : 1;
+      const fade = since > 2000 ? 1 - (since - 2000) / 500 : 1;
+      burst.setAttribute('opacity', fade);
+      burst.setAttribute('transform', `translate(150 44) scale(${0.6 + 0.5 * pop - 0.1 * Math.min(1, since / 400)}) translate(-150 -44)`);
+    } else {
+      burst.setAttribute('opacity', 0);
+    }
+  }
+
+  function loop() {
+    const t = now();
+    const dt = Math.min(t - lastFrame, 100);
+    lastFrame = t;
+    const ms = total();
+    const e = effectAt(ms);
+
+    if (running) render();
+    if (useVideo) updateVideo(ms / 1000);
+    else drawPenguin(t, ms, e, dt);
+
+    $('mood').textContent = moodText(ms, e);
+    $('effectPct').textContent = `약효 ${Math.round(e * 100)}%`;
+    $('effectBar').style.width = (e * 100) + '%';
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ── 스톱워치 ──
+  function renderLaps() {
+    lapsEl.innerHTML = '';
+    const min = Math.min(...laps), max = Math.max(...laps);
+    laps.slice().reverse().forEach((lap, i) => {
+      const no = laps.length - i;
+      const li = document.createElement('li');
+      if (laps.length > 1 && lap === min) li.className = 'best';
+      if (laps.length > 1 && lap === max) li.className = 'worst';
+      const f = format(lap);
+      li.innerHTML = `<span class="lap-no">랩 ${no}</span><span>${f.main}.${f.cs}</span>`;
+      lapsEl.appendChild(li);
+    });
+  }
+
+  function startStop() {
+    if (running) {
+      elapsed += now() - startTime;
+      running = false;
+      startBtn.textContent = '시작';
+      startBtn.classList.remove('running');
+      lapBtn.textContent = '리셋';
+      render();
+    } else {
+      startTime = now();
+      running = true;
+      startBtn.textContent = '정지';
+      startBtn.classList.add('running');
+      lapBtn.textContent = '랩';
+      lapBtn.disabled = false;
+    }
+  }
+
+  function lapOrReset() {
+    if (running) {
+      const t = total();
+      laps.push(t - lapStart);
+      lapStart = t;
+      renderLaps();
+    } else {
+      reset();
+    }
+  }
+
+  function reset() {
+    if (running) return;
+    elapsed = 0; lapStart = 0; laps = [];
+    lapsEl.innerHTML = '';
+    lapBtn.textContent = '랩';
+    lapBtn.disabled = true;
+    render();
+  }
+
+  startBtn.addEventListener('click', startStop);
+  lapBtn.addEventListener('click', lapOrReset);
+
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); startStop(); }
+    else if (e.key === 'l' || e.key === 'L') { if (running) lapOrReset(); }
+    else if (e.key === 'r' || e.key === 'R') { reset(); }
+  });
+</script>
+</body>
+</html>
